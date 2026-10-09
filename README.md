@@ -190,6 +190,10 @@ repository permissions and uses only temporary test databases.
 - A persistent shared rate limiter and hardened deployment configuration.
 - Additional accessibility and cross-browser testing.
 
+## License
+
+This project is available under the [MIT License](LICENSE).
+
 ## Development note
 
 AI coding tools assisted with implementation, review, test generation, and
