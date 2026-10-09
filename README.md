@@ -1,5 +1,7 @@
 # Finance Tracker
 
+[![CI](https://github.com/aayush-dhg/finance-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/aayush-dhg/finance-tracker/actions/workflows/ci.yml)
+
 Finance Tracker is a local personal-finance dashboard and Python learning
 project built with Flask and SQLite. It is intended for experimenting with
 authentication, relational data, validation, financial calculations, and
@@ -153,6 +155,10 @@ The suite covers authentication and logout, hashing, CSRF, validation,
 rate-limiting behavior, user isolation, financial calculations, month/year
 grouping, paycheck deductions and retirement links, edit/delete recalculation,
 migration preservation, and isolation of the fictional demo generator.
+
+GitHub Actions runs the same Python 3.11 compilation and test commands for
+every push to `main` and every pull request. The workflow has read-only
+repository permissions and uses only temporary test databases.
 
 ## Privacy before publishing
 
