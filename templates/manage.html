@@ -1,0 +1,1195 @@
+{% macro csrf_field() -%}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{% macro paycheck_fields(paycheck=None, prefix='new_paycheck') -%}
+    {% set item = paycheck or {} %}
+    <div class="field-grid two-column-fields">
+        <div>
+            <label for="{{ prefix }}_date">Pay date</label>
+            <input
+                id="{{ prefix }}_date"
+                name="pay_date"
+                type="date"
+                value="{{ item.get('pay_date', today) }}"
+                required
+            >
+        </div>
+        <div>
+            <label for="{{ prefix }}_employee">Employee / household member</label>
+            <input
+                id="{{ prefix }}_employee"
+                name="employee_name"
+                maxlength="100"
+                value="{{ item.get('employee_name', '') }}"
+                required
+            >
+        </div>
+        <div>
+            <label for="{{ prefix }}_employer">Employer or income source</label>
+            <input
+                id="{{ prefix }}_employer"
+                name="employer"
+                maxlength="100"
+                value="{{ item.get('employer', '') }}"
+                required
+            >
+        </div>
+        <div>
+            <label for="{{ prefix }}_gross">Gross pay ($)</label>
+            <input
+                id="{{ prefix }}_gross"
+                name="gross_pay"
+                type="number"
+                min="0.01"
+                max="1000000"
+                step="0.01"
+                value="{{ '%.2f'|format(item.get('gross_pay_cents', 0) / 100) }}"
+                data-paycheck-amount="gross"
+                required
+            >
+        </div>
+    </div>
+
+    <fieldset>
+        <legend>Taxes withheld</legend>
+        <p class="fieldset-note">
+            Use the detailed fields, or put an unsplit total in Other taxes.
+        </p>
+        <div class="field-grid tax-grid">
+            {% for field, label, key in (
+                ('federal_tax', 'Federal', 'federal_tax_cents'),
+                ('state_tax', 'State', 'state_tax_cents'),
+                ('social_security_tax', 'Social Security', 'social_security_tax_cents'),
+                ('medicare_tax', 'Medicare', 'medicare_tax_cents'),
+                ('other_tax', 'Other / unsplit', 'other_tax_cents')
+            ) %}
+                <div>
+                    <label for="{{ prefix }}_{{ field }}">{{ label }} ($)</label>
+                    <input
+                        id="{{ prefix }}_{{ field }}"
+                        name="{{ field }}"
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="0.01"
+                        value="{{ '%.2f'|format(item.get(key, 0) / 100) }}"
+                        data-paycheck-deduction
+                    >
+                </div>
+            {% endfor %}
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Benefits and retirement</legend>
+        <div class="field-grid two-column-fields">
+            <div>
+                <label for="{{ prefix }}_health">Employee health insurance ($)</label>
+                <input
+                    id="{{ prefix }}_health"
+                    name="health_insurance"
+                    type="number"
+                    min="0"
+                    max="1000000"
+                    step="0.01"
+                    value="{{ '%.2f'|format(item.get('health_insurance_cents', 0) / 100) }}"
+                    data-paycheck-deduction
+                >
+            </div>
+            <div>
+                <label for="{{ prefix }}_employee_401k">Employee 401(k) ($)</label>
+                <input
+                    id="{{ prefix }}_employee_401k"
+                    name="employee_401k"
+                    type="number"
+                    min="0"
+                    max="1000000"
+                    step="0.01"
+                    value="{{ '%.2f'|format(item.get('employee_401k_cents', 0) / 100) }}"
+                    data-paycheck-deduction
+                >
+            </div>
+            <div>
+                <label for="{{ prefix }}_account">Linked 401(k) account</label>
+                <select id="{{ prefix }}_account" name="retirement_account_id">
+                    <option value="">No linked account</option>
+                    {% for account in retirement_accounts %}
+                        <option
+                            value="{{ account['id'] }}"
+                            {% if item.get('retirement_account_id') == account['id'] %}selected{% endif %}
+                        >
+                            {{ account['name'] }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="{{ prefix }}_match">Employer 401(k) match ($)</label>
+                <input
+                    id="{{ prefix }}_match"
+                    name="employer_match"
+                    type="number"
+                    min="0"
+                    max="1000000"
+                    step="0.01"
+                    value="{{ '%.2f'|format(item.get('employer_match_cents', 0) / 100) }}"
+                >
+                <label class="checkbox-label">
+                    <input
+                        name="employer_match_vested"
+                        type="checkbox"
+                        {% if item.get('employer_match_vested') %}checked{% endif %}
+                    >
+                    Employer match is vested
+                </label>
+            </div>
+        </div>
+        <p class="fieldset-note">
+            Employer match is tracked as retirement compensation. It never
+            reduces net pay or increases spendable income.
+        </p>
+    </fieldset>
+
+    <fieldset>
+        <legend>Custom deductions</legend>
+        <div class="deduction-fields" data-deduction-fields>
+            {% for deduction in item.get('deductions', []) %}
+                <div class="deduction-row">
+                    <div>
+                        <label>Deduction name</label>
+                        <input
+                            name="deduction_name"
+                            maxlength="100"
+                            value="{{ deduction['name'] }}"
+                        >
+                    </div>
+                    <div>
+                        <label>Amount ($)</label>
+                        <input
+                            name="deduction_amount"
+                            type="number"
+                            min="0.01"
+                            max="1000000"
+                            step="0.01"
+                            value="{{ '%.2f'|format(deduction['amount_cents'] / 100) }}"
+                            data-custom-deduction
+                        >
+                    </div>
+                </div>
+            {% endfor %}
+            <div class="deduction-row">
+                <div>
+                    <label>Deduction name</label>
+                    <input name="deduction_name" maxlength="100">
+                </div>
+                <div>
+                    <label>Amount ($)</label>
+                    <input
+                        name="deduction_amount"
+                        type="number"
+                        min="0.01"
+                        max="1000000"
+                        step="0.01"
+                        data-custom-deduction
+                    >
+                </div>
+            </div>
+        </div>
+        <button class="text-button" type="button" data-add-deduction>
+            + Add another deduction
+        </button>
+    </fieldset>
+
+    <div class="field-grid two-column-fields net-fields">
+        <div>
+            <label for="{{ prefix }}_actual_net">Actual net deposit ($)</label>
+            <input
+                id="{{ prefix }}_actual_net"
+                name="actual_net"
+                type="number"
+                min="0"
+                max="1000000"
+                step="0.01"
+                value="{{ '%.2f'|format(item.get('actual_net_cents', 0) / 100) }}"
+                data-paycheck-amount="actual"
+                required
+            >
+        </div>
+        <div class="calculation-preview" aria-live="polite">
+            <span>Expected net</span>
+            <strong data-expected-net>
+                {{ item.get('expected_net_cents', 0)|money }}
+            </strong>
+            <small data-discrepancy>
+                Discrepancy: {{ item.get('discrepancy_cents', 0)|money }}
+            </small>
+        </div>
+    </div>
+{%- endmacro %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add &amp; Manage | Finance Tracker</title>
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+    <script
+        src="{{ url_for('static', filename='manage.js') }}"
+        defer
+    ></script>
+</head>
+<body>
+    <header class="app-header manage-header">
+        <a class="button button-secondary" href="{{ url_for('home') }}">
+            ← Dashboard
+        </a>
+
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">F</span>
+            <div>
+                <p class="eyebrow">{{ owner }}’s Finance</p>
+                <h1>Add &amp; manage</h1>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('logout') }}">
+            {{ csrf_field() }}
+            <button class="button button-secondary" type="submit">
+                Logout
+            </button>
+        </form>
+    </header>
+
+    <main class="manage-shell">
+        <nav class="section-nav" aria-label="Data sections">
+            <a href="#income">Income</a>
+            <a href="#paychecks">Paychecks</a>
+            <a href="#expenses">Expenses</a>
+            <a href="#assets">Assets</a>
+            <a href="#debts">Debts</a>
+            <a href="#debt-history">Debt payments</a>
+        </nav>
+
+        {% if error %}
+            <p class="error-banner" role="alert">{{ error }}</p>
+        {% endif %}
+
+        <section id="income" class="manage-section">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Cash coming in</p>
+                    <h2>Income</h2>
+                </div>
+                <p>
+                    Planned income powers estimates. Dated income powers
+                    recorded monthly and yearly insights.
+                </p>
+            </div>
+
+            <div class="form-grid two-column">
+                <article class="form-card">
+                    <h3>Planned monthly income</h3>
+                    <form method="POST" action="{{ url_for('save_income_plan') }}">
+                        {{ csrf_field() }}
+                        <label for="your_income">Your take-home income ($)</label>
+                        <input
+                            id="your_income"
+                            name="your_income"
+                            type="number"
+                            min="0"
+                            max="1000000"
+                            step="0.01"
+                            value="{{ '%.2f'|format(your_income_cents / 100) }}"
+                            required
+                        >
+
+                        <label for="spouse_income">Spouse income ($)</label>
+                        <input
+                            id="spouse_income"
+                            name="spouse_income"
+                            type="number"
+                            min="0"
+                            max="1000000"
+                            step="0.01"
+                            value="{{ '%.2f'|format(spouse_income_cents / 100) }}"
+                            required
+                        >
+
+                        <button class="button button-primary" type="submit">
+                            Save plan
+                        </button>
+                    </form>
+                </article>
+
+                <article class="form-card">
+                    <h3>Record other received income</h3>
+                    <p class="form-help">
+                        Use Paychecks for wages so the same deposit is not
+                        recorded twice.
+                    </p>
+                    <form method="POST" action="{{ url_for('create_income_record') }}">
+                        {{ csrf_field() }}
+                        <label for="income_name">Income name</label>
+                        <input
+                            id="income_name"
+                            name="name"
+                            maxlength="100"
+                            placeholder="For example: Paycheck"
+                            required
+                        >
+
+                        <label for="income_amount">Amount ($)</label>
+                        <input
+                            id="income_amount"
+                            name="amount"
+                            type="number"
+                            min="0.01"
+                            max="1000000"
+                            step="0.01"
+                            required
+                        >
+
+                        <label for="income_date">Date received</label>
+                        <input
+                            id="income_date"
+                            name="recorded_on"
+                            type="date"
+                            value="{{ today }}"
+                            required
+                        >
+
+                        <button class="button button-primary" type="submit">
+                            Record income
+                        </button>
+                    </form>
+                </article>
+            </div>
+
+            <div class="records-block">
+                <h3>Recorded income</h3>
+                {% if income_records %}
+                    <div class="record-list">
+                        {% for income_record in income_records %}
+                            <details class="record-item">
+                                <summary>
+                                    <span>
+                                        <strong>{{ income_record['name'] }}</strong>
+                                        <small>{{ income_record['recorded_on'] }}</small>
+                                    </span>
+                                    <b>{{ income_record['amount_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'edit_income_record',
+                                            income_id=income_record['id']
+                                        ) }}"
+                                    >
+                                        {{ csrf_field() }}
+                                        <label>Name</label>
+                                        <input
+                                            name="name"
+                                            maxlength="100"
+                                            value="{{ income_record['name'] }}"
+                                            required
+                                        >
+                                        <label>Amount ($)</label>
+                                        <input
+                                            name="amount"
+                                            type="number"
+                                            min="0.01"
+                                            max="1000000"
+                                            step="0.01"
+                                            value="{{ '%.2f'|format(
+                                                income_record['amount_cents'] / 100
+                                            ) }}"
+                                            required
+                                        >
+                                        <label>Date</label>
+                                        <input
+                                            name="recorded_on"
+                                            type="date"
+                                            value="{{ income_record['recorded_on'] }}"
+                                            required
+                                        >
+                                        <button class="button button-primary" type="submit">
+                                            Save changes
+                                        </button>
+                                    </form>
+                                    <form
+                                        class="delete-form"
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'remove_income_record',
+                                            income_id=income_record['id']
+                                        ) }}"
+                                        onsubmit="return confirm('Delete this income record?');"
+                                    >
+                                        {{ csrf_field() }}
+                                        <button class="button button-danger" type="submit">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-line">No dated income recorded yet.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="paychecks" class="manage-section">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Recorded take-home pay</p>
+                    <h2>Paychecks</h2>
+                </div>
+                <p>
+                    Actual net deposits feed cash-flow reports. Payroll taxes,
+                    benefits, and employee retirement deductions are shown here
+                    and are not subtracted a second time.
+                </p>
+            </div>
+
+            {% if not retirement_accounts %}
+                <p class="info-banner">
+                    You can record a paycheck now. To track 401(k)
+                    contributions, first add a retirement account under
+                    <a href="#assets">Assets</a>.
+                </p>
+            {% endif %}
+
+            <article class="form-card paycheck-form-card">
+                <h3>Add a paycheck</h3>
+                <form
+                    class="paycheck-form"
+                    method="POST"
+                    action="{{ url_for('create_paycheck') }}"
+                >
+                    {{ csrf_field() }}
+                    {{ paycheck_fields() }}
+                    <button class="button button-primary" type="submit">
+                        Add paycheck
+                    </button>
+                </form>
+            </article>
+
+            <div class="records-block">
+                <h3>Saved paychecks</h3>
+                {% if paychecks %}
+                    <div class="record-list">
+                        {% for paycheck in paychecks %}
+                            <details class="record-item paycheck-record">
+                                <summary>
+                                    <span>
+                                        <strong>
+                                            {{ paycheck['employee_name'] }} ·
+                                            {{ paycheck['employer'] }}
+                                        </strong>
+                                        <small>{{ paycheck['pay_date'] }}</small>
+                                    </span>
+                                    <b>{{ paycheck['actual_net_cents']|money }} net</b>
+                                </summary>
+
+                                <div class="paycheck-breakdown">
+                                    <div>
+                                        <span>Gross pay</span>
+                                        <strong>{{ paycheck['gross_pay_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Total taxes</span>
+                                        <strong>−{{ paycheck['taxes_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Health insurance</span>
+                                        <strong>−{{ paycheck['health_insurance_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Employee 401(k)</span>
+                                        <strong>−{{ paycheck['employee_401k_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Custom deductions</span>
+                                        <strong>−{{ paycheck['custom_deductions_cents']|money }}</strong>
+                                    </div>
+                                    <div class="breakdown-total">
+                                        <span>Expected net</span>
+                                        <strong>{{ paycheck['expected_net_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Actual net deposited</span>
+                                        <strong>{{ paycheck['actual_net_cents']|money }}</strong>
+                                    </div>
+                                    <div class="{{ 'warning-value' if paycheck['discrepancy_cents'] else '' }}">
+                                        <span>Discrepancy</span>
+                                        <strong>{{ paycheck['discrepancy_cents']|money }}</strong>
+                                    </div>
+                                </div>
+
+                                {% if paycheck['deductions'] %}
+                                    <div class="custom-deduction-summary">
+                                        <strong>Custom deductions</strong>
+                                        <ul>
+                                            {% for deduction in paycheck['deductions'] %}
+                                                <li>
+                                                    <span>{{ deduction['name'] }}</span>
+                                                    <b>{{ deduction['amount_cents']|money }}</b>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                {% endif %}
+
+                                {% if paycheck['employee_401k_cents'] or paycheck['employer_match_cents'] %}
+                                    <div class="contribution-summary">
+                                        <div>
+                                            <span>401(k) account</span>
+                                            <strong>
+                                                {{ paycheck['retirement_account_name'] or 'Not linked' }}
+                                            </strong>
+                                        </div>
+                                        <div>
+                                            <span>Employee contribution</span>
+                                            <strong>{{ paycheck['employee_401k_cents']|money }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>
+                                                Employer match
+                                                ({{ 'vested' if paycheck['employer_match_vested'] else 'unvested' }})
+                                            </span>
+                                            <strong>{{ paycheck['employer_match_cents']|money }}</strong>
+                                        </div>
+                                    </div>
+                                {% endif %}
+
+                                <div class="record-editor paycheck-editor">
+                                    <form
+                                        class="paycheck-form"
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'edit_paycheck',
+                                            paycheck_id=paycheck['id']
+                                        ) }}"
+                                    >
+                                        {{ csrf_field() }}
+                                        {{ paycheck_fields(
+                                            paycheck,
+                                            'paycheck_' ~ paycheck['id']
+                                        ) }}
+                                        <button class="button button-primary" type="submit">
+                                            Save paycheck
+                                        </button>
+                                    </form>
+                                    <form
+                                        class="delete-form"
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'remove_paycheck',
+                                            paycheck_id=paycheck['id']
+                                        ) }}"
+                                        onsubmit="return confirm('Delete this paycheck and its linked contribution records?');"
+                                    >
+                                        {{ csrf_field() }}
+                                        <button class="button button-danger" type="submit">
+                                            Delete paycheck
+                                        </button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-line">
+                        No paychecks recorded. Planned income remains separate
+                        and no historical paychecks are generated from it.
+                    </p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="expenses" class="manage-section">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">Cash going out</p>
+                    <h2>Expenses</h2>
+                </div>
+                <p>
+                    Leave the date blank for a recurring monthly plan, or add
+                    a date to include the expense in recorded history.
+                </p>
+            </div>
+
+            <article class="form-card narrow-card">
+                <h3>Add an expense</h3>
+                <form method="POST" action="{{ url_for('create_expense') }}">
+                    {{ csrf_field() }}
+                    <label for="expense_name">Expense name</label>
+                    <input
+                        id="expense_name"
+                        name="name"
+                        maxlength="100"
+                        placeholder="For example: Internet bill"
+                        required
+                    >
+
+                    <label for="expense_category">Category</label>
+                    <input
+                        id="expense_category"
+                        name="category"
+                        list="expense_categories"
+                        maxlength="50"
+                        placeholder="For example: Subscriptions"
+                        required
+                    >
+                    <datalist id="expense_categories">
+                        {% for category in expense_categories %}
+                            <option value="{{ category }}"></option>
+                        {% endfor %}
+                    </datalist>
+
+                    <label for="expense_amount">Amount ($)</label>
+                    <input
+                        id="expense_amount"
+                        name="amount"
+                        type="number"
+                        min="0.01"
+                        max="1000000"
+                        step="0.01"
+                        required
+                    >
+
+                    <label for="expense_date">
+                        Recorded date <span class="optional">(optional)</span>
+                    </label>
+                    <input id="expense_date" name="recorded_on" type="date">
+
+                    <button class="button button-primary" type="submit">
+                        Add expense
+                    </button>
+                </form>
+            </article>
+
+            <div class="records-block">
+                <h3>Saved expenses</h3>
+                {% if expenses %}
+                    <div class="record-list">
+                        {% for expense in expenses %}
+                            <details class="record-item">
+                                <summary>
+                                    <span>
+                                        <strong>{{ expense['name'] }}</strong>
+                                        <small>
+                                            {{ expense['category'] }} ·
+                                            {{ expense['recorded_on'] or 'Planned monthly' }}
+                                        </small>
+                                    </span>
+                                    <b>{{ expense['amount_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'edit_expense',
+                                            expense_id=expense['id']
+                                        ) }}"
+                                    >
+                                        {{ csrf_field() }}
+                                        <label>Name</label>
+                                        <input
+                                            name="name"
+                                            maxlength="100"
+                                            value="{{ expense['name'] }}"
+                                            required
+                                        >
+                                        <label>Category</label>
+                                        <input
+                                            name="category"
+                                            list="expense_categories"
+                                            maxlength="50"
+                                            value="{{ expense['category'] }}"
+                                            required
+                                        >
+                                        <label>Amount ($)</label>
+                                        <input
+                                            name="amount"
+                                            type="number"
+                                            min="0.01"
+                                            max="1000000"
+                                            step="0.01"
+                                            value="{{ '%.2f'|format(
+                                                expense['amount_cents'] / 100
+                                            ) }}"
+                                            required
+                                        >
+                                        <label>Recorded date (blank = planned)</label>
+                                        <input
+                                            name="recorded_on"
+                                            type="date"
+                                            value="{{ expense['recorded_on'] or '' }}"
+                                        >
+                                        <button class="button button-primary" type="submit">
+                                            Save changes
+                                        </button>
+                                    </form>
+                                    <form
+                                        class="delete-form"
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'remove_expense',
+                                            expense_id=expense['id']
+                                        ) }}"
+                                        onsubmit="return confirm('Delete this expense?');"
+                                    >
+                                        {{ csrf_field() }}
+                                        <button class="button button-danger" type="submit">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-line">No expenses saved yet.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="assets" class="manage-section">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">What you own</p>
+                    <h2>Assets</h2>
+                </div>
+                <p>Save current account, investment, property, or other balances.</p>
+            </div>
+
+            <article class="form-card narrow-card">
+                <h3>Add an asset</h3>
+                <form method="POST" action="{{ url_for('create_asset') }}">
+                    {{ csrf_field() }}
+                    <label for="asset_name">Asset name</label>
+                    <input
+                        id="asset_name"
+                        name="name"
+                        maxlength="100"
+                        placeholder="For example: Savings account"
+                        required
+                    >
+                    <label for="asset_category">Category</label>
+                    <input
+                        id="asset_category"
+                        name="category"
+                        maxlength="50"
+                        placeholder="For example: Cash"
+                        required
+                    >
+                    <label for="asset_balance">Current balance ($)</label>
+                    <input
+                        id="asset_balance"
+                        name="balance"
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="0.01"
+                        required
+                    >
+                    <label for="asset_date">Balance as of</label>
+                    <input
+                        id="asset_date"
+                        name="as_of_date"
+                        type="date"
+                        value="{{ today }}"
+                        required
+                    >
+                    <button class="button button-primary" type="submit">
+                        Add asset
+                    </button>
+                </form>
+            </article>
+
+            <article class="form-card narrow-card retirement-form-card">
+                <h3>Add a 401(k) account</h3>
+                <p class="form-help">
+                    Enter balances from a statement. Only vested balance counts
+                    toward net worth; contribution history is not added to it.
+                </p>
+                <form
+                    method="POST"
+                    action="{{ url_for('create_retirement_account') }}"
+                >
+                    {{ csrf_field() }}
+                    <label for="retirement_name">Account name</label>
+                    <input
+                        id="retirement_name"
+                        name="name"
+                        maxlength="100"
+                        placeholder="For example: Employer 401(k)"
+                        required
+                    >
+                    <label for="retirement_vested">Reported vested balance ($)</label>
+                    <input
+                        id="retirement_vested"
+                        name="vested_balance"
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="0.01"
+                        required
+                    >
+                    <label for="retirement_unvested">Reported unvested balance ($)</label>
+                    <input
+                        id="retirement_unvested"
+                        name="unvested_balance"
+                        type="number"
+                        min="0"
+                        max="1000000"
+                        step="0.01"
+                        value="0.00"
+                    >
+                    <label for="retirement_date">Balance date</label>
+                    <input
+                        id="retirement_date"
+                        name="balance_date"
+                        type="date"
+                        value="{{ today }}"
+                        required
+                    >
+                    <button class="button button-primary" type="submit">
+                        Add 401(k) account
+                    </button>
+                </form>
+            </article>
+
+            <div class="records-block">
+                <h3>Saved assets</h3>
+                {% if assets %}
+                    <div class="record-list">
+                        {% for asset in assets %}
+                            <details class="record-item">
+                                <summary>
+                                    <span>
+                                        <strong>{{ asset['name'] }}</strong>
+                                        <small>
+                                            {{ asset['category'] }} · as of
+                                            {{ asset['as_of_date'] }}
+                                        </small>
+                                    </span>
+                                    <b>{{ asset['balance_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'edit_asset',
+                                            asset_id=asset['id']
+                                        ) }}"
+                                    >
+                                        {{ csrf_field() }}
+                                        <label>Name</label>
+                                        <input name="name" maxlength="100" value="{{ asset['name'] }}" required>
+                                        <label>Category</label>
+                                        <input name="category" maxlength="50" value="{{ asset['category'] }}" required>
+                                        <label>Balance ($)</label>
+                                        <input
+                                            name="balance"
+                                            type="number"
+                                            min="0"
+                                            max="1000000"
+                                            step="0.01"
+                                            value="{{ '%.2f'|format(asset['balance_cents'] / 100) }}"
+                                            required
+                                        >
+                                        <label>Balance as of</label>
+                                        <input name="as_of_date" type="date" value="{{ asset['as_of_date'] }}" required>
+                                        <button class="button button-primary" type="submit">Save changes</button>
+                                    </form>
+                                    <form
+                                        class="delete-form"
+                                        method="POST"
+                                        action="{{ url_for('remove_asset', asset_id=asset['id']) }}"
+                                        onsubmit="return confirm('Delete this asset?');"
+                                    >
+                                        {{ csrf_field() }}
+                                        <button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-line">No assets saved yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="records-block">
+                <h3>401(k) accounts</h3>
+                {% if retirement_accounts %}
+                    <div class="record-list">
+                        {% for account in retirement_accounts %}
+                            <details class="record-item">
+                                <summary>
+                                    <span>
+                                        <strong>{{ account['name'] }}</strong>
+                                        <small>
+                                            Reported {{ account['balance_date'] }} ·
+                                            unvested {{ account['unvested_balance_cents']|money }}
+                                        </small>
+                                    </span>
+                                    <b>{{ account['vested_balance_cents']|money }} vested</b>
+                                </summary>
+
+                                <div class="contribution-summary account-contributions">
+                                    <div>
+                                        <span>Tracked employee contributions</span>
+                                        <strong>{{ account['employee_contributions_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Tracked vested employer match</span>
+                                        <strong>{{ account['vested_match_contributions_cents']|money }}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Tracked unvested employer match</span>
+                                        <strong>{{ account['unvested_match_contributions_cents']|money }}</strong>
+                                    </div>
+                                </div>
+                                <p class="data-note account-note">
+                                    Contribution totals are activity history,
+                                    not an inferred account balance.
+                                </p>
+
+                                <div class="record-editor">
+                                    <form
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'edit_retirement_account',
+                                            account_id=account['id']
+                                        ) }}"
+                                    >
+                                        {{ csrf_field() }}
+                                        <label>Name</label>
+                                        <input name="name" maxlength="100" value="{{ account['name'] }}" required>
+                                        <label>Reported vested balance ($)</label>
+                                        <input name="vested_balance" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(account['vested_balance_cents'] / 100) }}" required>
+                                        <label>Reported unvested balance ($)</label>
+                                        <input name="unvested_balance" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(account['unvested_balance_cents'] / 100) }}" required>
+                                        <label>Balance date</label>
+                                        <input name="balance_date" type="date" value="{{ account['balance_date'] }}" required>
+                                        <button class="button button-primary" type="submit">Save account</button>
+                                    </form>
+                                    <form
+                                        class="delete-form"
+                                        method="POST"
+                                        action="{{ url_for(
+                                            'remove_retirement_account',
+                                            account_id=account['id']
+                                        ) }}"
+                                        onsubmit="return confirm('Delete this 401(k) account? Linked paychecks must be removed first.');"
+                                    >
+                                        {{ csrf_field() }}
+                                        <button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-line">No 401(k) accounts saved yet.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section id="debts" class="manage-section">
+            <div class="section-title">
+                <div>
+                    <p class="eyebrow">What you owe</p>
+                    <h2>Debt balances</h2>
+                </div>
+                <p>
+                    Current balances determine total debt. Planned payments
+                    affect monthly cash flow but do not increase debt.
+                </p>
+            </div>
+
+            <div class="form-grid two-column">
+                <article class="form-card">
+                    <h3>Add a credit card</h3>
+                    <form method="POST" action="{{ url_for('create_credit_card') }}">
+                        {{ csrf_field() }}
+                        <label for="card_nickname">Nickname</label>
+                        <input id="card_nickname" name="nickname" maxlength="100" required>
+                        <label for="card_balance">Balance ($)</label>
+                        <input id="card_balance" name="balance" type="number" min="0" max="1000000" step="0.01" required>
+                        <label for="card_apr">APR (%)</label>
+                        <input id="card_apr" name="apr" type="number" min="0" max="100" step="0.01" required>
+                        <label for="card_minimum">Planned minimum payment ($)</label>
+                        <input id="card_minimum" name="minimum_payment" type="number" min="0" max="1000000" step="0.01" required>
+                        <label for="card_due">Due day</label>
+                        <input id="card_due" name="due_day" type="number" min="1" max="31" required>
+                        <button class="button button-primary" type="submit">Add card</button>
+                    </form>
+                </article>
+
+                <article class="form-card">
+                    <h3>Add a loan</h3>
+                    <form method="POST" action="{{ url_for('create_loan') }}">
+                        {{ csrf_field() }}
+                        <label for="loan_name">Loan name</label>
+                        <input id="loan_name" name="name" maxlength="100" required>
+                        <label for="loan_type">Loan type</label>
+                        <select id="loan_type" name="loan_type" required>
+                            {% for loan_type in loan_types %}
+                                <option value="{{ loan_type }}">{{ loan_type|title }}</option>
+                            {% endfor %}
+                        </select>
+                        <label for="loan_balance">Balance ($)</label>
+                        <input id="loan_balance" name="balance" type="number" min="0" max="1000000" step="0.01" required>
+                        <label for="loan_apr">APR (%)</label>
+                        <input id="loan_apr" name="apr" type="number" min="0" max="100" step="0.01" required>
+                        <label for="loan_payment">Planned monthly payment ($)</label>
+                        <input id="loan_payment" name="monthly_payment" type="number" min="0" max="1000000" step="0.01" required>
+                        <label for="loan_due">Due day</label>
+                        <input id="loan_due" name="due_day" type="number" min="1" max="31" required>
+                        <button class="button button-primary" type="submit">Add loan</button>
+                    </form>
+                </article>
+            </div>
+
+            <div class="records-block">
+                <h3>Credit cards</h3>
+                {% if credit_cards %}
+                    <div class="record-list">
+                        {% for card in credit_cards %}
+                            <details class="record-item">
+                                <summary>
+                                    <span><strong>{{ card['nickname'] }}</strong><small>Due day {{ card['due_day'] }} · {{ '%.2f'|format(card['apr_basis_points'] / 100) }}% APR</small></span>
+                                    <b>{{ card['balance_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form method="POST" action="{{ url_for('edit_credit_card', card_id=card['id']) }}">
+                                        {{ csrf_field() }}
+                                        <label>Nickname</label><input name="nickname" maxlength="100" value="{{ card['nickname'] }}" required>
+                                        <label>Balance ($)</label><input name="balance" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(card['balance_cents'] / 100) }}" required>
+                                        <label>APR (%)</label><input name="apr" type="number" min="0" max="100" step="0.01" value="{{ '%.2f'|format(card['apr_basis_points'] / 100) }}" required>
+                                        <label>Minimum payment ($)</label><input name="minimum_payment" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(card['minimum_payment_cents'] / 100) }}" required>
+                                        <label>Due day</label><input name="due_day" type="number" min="1" max="31" value="{{ card['due_day'] }}" required>
+                                        <button class="button button-primary" type="submit">Save changes</button>
+                                    </form>
+                                    <form class="delete-form" method="POST" action="{{ url_for('remove_credit_card', card_id=card['id']) }}" onsubmit="return confirm('Delete this card?');">
+                                        {{ csrf_field() }}<button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}<p class="empty-line">No credit cards saved.</p>{% endif %}
+            </div>
+
+            <div class="records-block">
+                <h3>Loans</h3>
+                {% if loans %}
+                    <div class="record-list">
+                        {% for loan in loans %}
+                            <details class="record-item">
+                                <summary>
+                                    <span><strong>{{ loan['name'] }}</strong><small>{{ loan['loan_type']|title }} · due day {{ loan['due_day'] }}</small></span>
+                                    <b>{{ loan['balance_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form method="POST" action="{{ url_for('edit_loan', loan_id=loan['id']) }}">
+                                        {{ csrf_field() }}
+                                        <label>Name</label><input name="name" maxlength="100" value="{{ loan['name'] }}" required>
+                                        <label>Type</label>
+                                        <select name="loan_type" required>
+                                            {% for loan_type in loan_types %}
+                                                <option value="{{ loan_type }}" {% if loan_type == loan['loan_type'] %}selected{% endif %}>{{ loan_type|title }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label>Balance ($)</label><input name="balance" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(loan['balance_cents'] / 100) }}" required>
+                                        <label>APR (%)</label><input name="apr" type="number" min="0" max="100" step="0.01" value="{{ '%.2f'|format(loan['apr_basis_points'] / 100) }}" required>
+                                        <label>Monthly payment ($)</label><input name="monthly_payment" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(loan['monthly_payment_cents'] / 100) }}" required>
+                                        <label>Due day</label><input name="due_day" type="number" min="1" max="31" value="{{ loan['due_day'] }}" required>
+                                        <button class="button button-primary" type="submit">Save changes</button>
+                                    </form>
+                                    <form class="delete-form" method="POST" action="{{ url_for('remove_loan', loan_id=loan['id']) }}" onsubmit="return confirm('Delete this loan?');">
+                                        {{ csrf_field() }}<button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}<p class="empty-line">No loans saved.</p>{% endif %}
+            </div>
+        </section>
+
+        <section id="debt-history" class="manage-section">
+            <div class="section-title">
+                <div><p class="eyebrow">Recorded history</p><h2>Debt payments</h2></div>
+                <p>Record actual payments for yearly history. These do not change the saved outstanding balance automatically.</p>
+            </div>
+
+            <article class="form-card narrow-card">
+                <h3>Record a debt payment</h3>
+                <form method="POST" action="{{ url_for('create_debt_payment') }}">
+                    {{ csrf_field() }}
+                    <label for="payment_name">Payment name</label>
+                    <input id="payment_name" name="name" maxlength="100" placeholder="For example: Visa payment" required>
+                    <label for="payment_type">Debt type</label>
+                    <select id="payment_type" name="debt_type" required>
+                        {% for debt_type in debt_payment_types %}
+                            <option value="{{ debt_type }}">{{ debt_type|replace('_', ' ')|title }}</option>
+                        {% endfor %}
+                    </select>
+                    <label for="payment_amount">Amount ($)</label>
+                    <input id="payment_amount" name="amount" type="number" min="0.01" max="1000000" step="0.01" required>
+                    <label for="payment_date">Date paid</label>
+                    <input id="payment_date" name="paid_on" type="date" value="{{ today }}" required>
+                    <button class="button button-primary" type="submit">Record payment</button>
+                </form>
+            </article>
+
+            <div class="records-block">
+                <h3>Recorded debt payments</h3>
+                {% if debt_payments %}
+                    <div class="record-list">
+                        {% for payment in debt_payments %}
+                            <details class="record-item">
+                                <summary>
+                                    <span><strong>{{ payment['name'] }}</strong><small>{{ payment['debt_type']|replace('_', ' ')|title }} · {{ payment['paid_on'] }}</small></span>
+                                    <b>{{ payment['amount_cents']|money }}</b>
+                                </summary>
+                                <div class="record-editor">
+                                    <form method="POST" action="{{ url_for('edit_debt_payment', payment_id=payment['id']) }}">
+                                        {{ csrf_field() }}
+                                        <label>Name</label><input name="name" maxlength="100" value="{{ payment['name'] }}" required>
+                                        <label>Debt type</label>
+                                        <select name="debt_type" required>
+                                            {% for debt_type in debt_payment_types %}
+                                                <option value="{{ debt_type }}" {% if debt_type == payment['debt_type'] %}selected{% endif %}>{{ debt_type|replace('_', ' ')|title }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <label>Amount ($)</label><input name="amount" type="number" min="0.01" max="1000000" step="0.01" value="{{ '%.2f'|format(payment['amount_cents'] / 100) }}" required>
+                                        <label>Date</label><input name="paid_on" type="date" value="{{ payment['paid_on'] }}" required>
+                                        <button class="button button-primary" type="submit">Save changes</button>
+                                    </form>
+                                    <form class="delete-form" method="POST" action="{{ url_for('remove_debt_payment', payment_id=payment['id']) }}" onsubmit="return confirm('Delete this payment record?');">
+                                        {{ csrf_field() }}<button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </details>
+                        {% endfor %}
+                    </div>
+                {% else %}<p class="empty-line">No debt payments recorded yet.</p>{% endif %}
+            </div>
+        </section>
+    </main>
+</body>
+</html>

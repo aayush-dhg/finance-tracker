@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Finance Tracker</title>
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-spacer" aria-hidden="true"></div>
+
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">F</span>
+            <div>
+                <p class="eyebrow">Finance tracker</p>
+                <h1>{{ owner }}’s Finance</h1>
+            </div>
+        </div>
+
+        <nav class="header-actions" aria-label="Account actions">
+            <a class="button button-primary" href="{{ url_for('manage') }}">
+                <span aria-hidden="true">+</span> Add
+            </a>
+
+            <form method="POST" action="{{ url_for('logout') }}">
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="{{ csrf_token() }}"
+                >
+                <button class="button button-secondary" type="submit">
+                    Logout
+                </button>
+            </form>
+        </nav>
+    </header>
+
+    <main class="dashboard-shell">
+        <div class="dashboard-intro">
+            <div>
+                <p class="eyebrow">Overview</p>
+                <h2>Your financial picture</h2>
+            </div>
+            <p class="intro-copy">
+                Current balances and saved records, without invented history.
+            </p>
+        </div>
+
+        <section class="dashboard-grid" aria-label="Financial overview">
+            <article class="dashboard-card net-worth-card">
+                <div class="card-heading">
+                    <div>
+                        <p class="card-kicker">Balance sheet</p>
+                        <h3>Net Worth</h3>
+                    </div>
+                    <span class="card-icon" aria-hidden="true">NW</span>
+                </div>
+
+                <p class="dashboard-amount {{ 'negative' if net_worth_cents < 0 }}">
+                    {{ net_worth_cents|money }}
+                </p>
+                <p class="amount-label">Assets minus outstanding debt</p>
+
+                <div class="comparison-chart" aria-hidden="true">
+                    <div class="comparison-row">
+                        <span>Assets</span>
+                        <div class="chart-track">
+                            <span
+                                class="chart-fill asset-fill"
+                                style="--bar-width: {{ assets_percent }}%"
+                            ></span>
+                        </div>
+                    </div>
+                    <div class="comparison-row">
+                        <span>Debt</span>
+                        <div class="chart-track">
+                            <span
+                                class="chart-fill debt-fill"
+                                style="--bar-width: {{ debt_percent }}%"
+                            ></span>
+                        </div>
+                    </div>
+                </div>
+                <p class="sr-only">
+                    Assets are {{ total_assets_cents|money }} and outstanding
+                    debt is {{ total_debt_cents|money }}.
+                </p>
+            </article>
+
+            <article class="dashboard-card">
+                <div class="card-heading">
+                    <div>
+                        <p class="card-kicker">What you own</p>
+                        <h3>Total Assets</h3>
+                    </div>
+                    <span class="card-icon asset-icon" aria-hidden="true">A</span>
+                </div>
+
+                <p class="dashboard-amount">{{ total_assets_cents|money }}</p>
+                <p class="amount-label">
+                    Current balances, including vested 401(k) balances
+                </p>
+
+                {% if assets_breakdown %}
+                    <div class="breakdown-chart">
+                        {% for item in assets_breakdown %}
+                            <div class="breakdown-item">
+                                <div class="chart-label">
+                                    <span>{{ item['label'] }}</span>
+                                    <strong>{{ item['amount_cents']|money }}</strong>
+                                </div>
+                                <div class="chart-track" aria-hidden="true">
+                                    <span
+                                        class="chart-fill asset-fill"
+                                        style="--bar-width: {{ item['percent'] }}%"
+                                    ></span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state compact-empty">
+                        <strong>No assets saved</strong>
+                        <span>Add an account or property balance to begin.</span>
+                    </div>
+                {% endif %}
+            </article>
+
+            <article class="dashboard-card">
+                <div class="card-heading">
+                    <div>
+                        <p class="card-kicker">What you owe</p>
+                        <h3>Total Debt</h3>
+                    </div>
+                    <span class="card-icon debt-icon" aria-hidden="true">D</span>
+                </div>
+
+                <p class="dashboard-amount">{{ total_debt_cents|money }}</p>
+                <p class="amount-label">
+                    Card and loan balances; payments excluded
+                </p>
+
+                {% if total_debt_cents %}
+                    <div class="breakdown-chart">
+                        {% for item in debt_breakdown %}
+                            <div class="breakdown-item">
+                                <div class="chart-label">
+                                    <span>{{ item['label'] }}</span>
+                                    <strong>{{ item['amount_cents']|money }}</strong>
+                                </div>
+                                <div class="chart-track" aria-hidden="true">
+                                    <span
+                                        class="chart-fill debt-fill"
+                                        style="--bar-width: {{ item['percent'] }}%"
+                                    ></span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state compact-empty">
+                        <strong>No debt balances saved</strong>
+                        <span>Credit cards and loans will appear here.</span>
+                    </div>
+                {% endif %}
+            </article>
+
+            <article class="dashboard-card">
+                <div class="card-heading insight-heading">
+                    <div>
+                        <p class="card-kicker">Cash flow</p>
+                        <h3>Monthly Insight</h3>
+                    </div>
+                    <form class="period-form" method="GET">
+                        <label class="sr-only" for="month">Select month</label>
+                        <input
+                            id="month"
+                            name="month"
+                            type="month"
+                            value="{{ selected_month }}"
+                        >
+                        <input
+                            type="hidden"
+                            name="year"
+                            value="{{ selected_year }}"
+                        >
+                        <button type="submit">View</button>
+                    </form>
+                </div>
+
+                <p class="dashboard-amount {{ 'negative' if monthly_net_cents < 0 }}">
+                    {{ monthly_net_cents|money }}
+                </p>
+                <p class="amount-label">
+                    {{ selected_month_label }} · {{ monthly_label }}
+                </p>
+
+                <div class="breakdown-chart monthly-chart">
+                    {% for item in monthly_comparison %}
+                        <div class="breakdown-item">
+                            <div class="chart-label">
+                                <span>{{ item['label'] }}</span>
+                                <strong>{{ item['amount_cents']|money }}</strong>
+                            </div>
+                            <div class="chart-track" aria-hidden="true">
+                                <span
+                                    class="chart-fill {{
+                                        'asset-fill'
+                                        if item['label'] == 'Income'
+                                        else 'expense-fill'
+                                    }}"
+                                    style="--bar-width: {{ item['percent'] }}%"
+                                ></span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                {% if not monthly_has_history %}
+                    <p class="data-note">
+                        No dated entries for this month, so this is a planned
+                        estimate rather than recorded history.
+                    </p>
+                {% elif monthly_paycheck_income_cents %}
+                    <p class="data-note">
+                        Includes {{ monthly_paycheck_income_cents|money }} in
+                        actual paycheck deposits. Payroll deductions are not
+                        subtracted again.
+                    </p>
+                {% endif %}
+            </article>
+
+            <article class="dashboard-card yearly-card">
+                <div class="card-heading insight-heading">
+                    <div>
+                        <p class="card-kicker">Recorded history</p>
+                        <h3>Yearly Insight</h3>
+                    </div>
+                    <form class="period-form" method="GET">
+                        <label class="sr-only" for="year">Select year</label>
+                        <input
+                            id="year"
+                            name="year"
+                            type="number"
+                            min="2000"
+                            max="2100"
+                            value="{{ selected_year }}"
+                        >
+                        <input
+                            type="hidden"
+                            name="month"
+                            value="{{ selected_month }}"
+                        >
+                        <button type="submit">View</button>
+                    </form>
+                </div>
+
+                {% if yearly_has_history %}
+                    <p class="dashboard-amount {{ 'negative' if yearly_net_cents < 0 }}">
+                        {{ yearly_net_cents|money }}
+                    </p>
+                    <p class="amount-label">
+                        {{ selected_year }} recorded net cash flow
+                    </p>
+
+                    <div class="year-chart" aria-hidden="true">
+                        {% for month in yearly_months %}
+                            <div class="month-column">
+                                <div class="month-bars">
+                                    <span
+                                        class="year-bar income-bar"
+                                        style="--bar-height: {{ month['income_percent'] }}%"
+                                    ></span>
+                                    <span
+                                        class="year-bar expense-bar"
+                                        style="--bar-height: {{ month['expense_percent'] }}%"
+                                    ></span>
+                                    <span
+                                        class="year-bar payment-bar"
+                                        style="--bar-height: {{ month['payment_percent'] }}%"
+                                    ></span>
+                                </div>
+                                <span>{{ month['label'] }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="chart-legend" aria-hidden="true">
+                        <span><i class="income-key"></i>Income</span>
+                        <span><i class="expense-key"></i>Expenses</span>
+                        <span><i class="payment-key"></i>Debt paid</span>
+                    </div>
+                    <p class="sr-only">
+                        {{ selected_year }} totals: income
+                        {{ yearly_income_cents|money }}, expenses
+                        {{ yearly_expenses_cents|money }}, and recorded debt
+                        payments {{ yearly_debt_payments_cents|money }}.
+                    </p>
+                {% else %}
+                    <p class="dashboard-amount muted-amount">—</p>
+                    <p class="amount-label">No annual amount available</p>
+                    <div class="empty-state yearly-empty">
+                        <strong>No recorded history for {{ selected_year }}</strong>
+                        <span>
+                            Add dated income, expenses, and debt payments.
+                            No annual projection has been invented.
+                        </span>
+                    </div>
+                {% endif %}
+            </article>
+        </section>
+
+        <footer class="dashboard-footer">
+            <p>
+                Outstanding debt uses current balances. Monthly debt payments
+                are only used in cash-flow insights, so they are never counted
+                twice as debt.
+            </p>
+            <a href="{{ url_for('manage') }}">Manage your financial data</a>
+        </footer>
+    </main>
+</body>
+</html>
